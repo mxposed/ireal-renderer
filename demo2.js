@@ -57,16 +57,38 @@ const PAGE_HTML = `
 </div>
 `;
 
+const getReactProps = (element) => {
+  for (const key in element) {
+    if (key.startsWith('__reactProps$')) {
+      return element[key];
+    }
+  }
+};
+
+/**
+ * @typedef {Object} Region
+ * @property {number} start - Region start time
+ * @property {number} end - Region end time
+ * @property {string[]} labels - Region labels
+ */
+
 const onLoad = async () => {
   console.log('DEMO2 YEEEEAH');
   const container = document.getElementById("ireal-container");
   const songTitle = container.innerText;
-  console.log('Want to render song ', songTitle);
   container.innerHTML = UI_HTML + PAGE_HTML;
   document.body.appendChild(container);
 
+  const LS_EL = parent.document.getElementsByClassName('lsf-audio-tag')[0].parentNode;
+  console.log(LS_EL);
+  /**
+   * @constant {Region[]} regions - Array of regions
+   */
+  const regions = getReactProps(LS_EL).children[1].props.item._ws.regions.regions;
+
   var playlist;
   let selected;
+  let measures;
   var options = {
     minor: "minus",
     transpose: 0,
@@ -105,9 +127,10 @@ const onLoad = async () => {
       .replace(/b/g, "\u266d")
       .replace(/#/g, "\u266f")})</h3><h5>${song.composer}</h5>`;
     r.render(song, container, options);
+    measures = findMeasures(container);
 
     // Add click handlers after rendering
-    addMeasureClickHandlers(container);
+    addMeasureClickHandlers();
   }
 
   function renderSelected() {
@@ -196,9 +219,7 @@ const onLoad = async () => {
    * Add click handlers to measures
    * @param {Element} container - The container element
    */
-  function addMeasureClickHandlers(container) {
-    const measures = findMeasures(container);
-
+  function addMeasureClickHandlers() {
     measures.forEach((measureCells, index) => {
       measureCells.forEach(cell => {
         cell.style.cursor = 'pointer';
@@ -256,19 +277,21 @@ const onLoad = async () => {
     const barNumber = parseInt(ev.target.value);
     if (isNaN(barNumber)) return;
 
-    // Get currently displayed song container
-    const selected = [...document.getElementById("songs").options]
-      .filter(option => option.selected)
-      .map(el => document.getElementById(`song-${el.value}`))
-      .find(el => el.innerHTML !== "");
-
-    if (!selected) return;
-
-    // Find measures and highlight selected one
-    const measures = findMeasures(selected);
     if (barNumber >= 0 && barNumber < measures.length) {
       // Simulate click on the first cell of the target measure
       measures[barNumber][0].click();
+    }
+  });
+
+  // Hook into audio playing event
+  getReactProps(LS_EL).children[1].props.item._ws.on('playing', (currentTime) => {
+    const region = regions.find(r => r.start <= currentTime && r.end >= currentTime);
+    if (region) {
+      const barNumber = region.labels[0];
+      if (barNumber == 'intro' || barNumber == 'outro') {
+      } else if (barNumber) {
+        measures[parseInt(barNumber)][0].click();
+      }
     }
   });
 
@@ -316,5 +339,12 @@ const onLoad = async () => {
 if (document.readyState === "complete") {
   onLoad();
 } else {
-  window.addEventListener("load", onLoad);
+  // Wait for the parent page react component to initialize
+  // TODO: replace with throttling to check for the component property
+  // we need this getReactProps(LS_EL).children[1].props.item._ws.regions.regions
+  window.addEventListener("load", () => {
+    window.setTimeout(() => {
+      onLoad()
+    }, 2000);
+  });
 }
